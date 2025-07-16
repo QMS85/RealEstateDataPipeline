@@ -1,125 +1,140 @@
-import pandas as pd
+import os
+  import pandas as pd
+  import numpy as np
   import matplotlib.pyplot as plt
   import seaborn as sns
-  import numpy as np
-  import re
-
-  # Load the dataset
-  df = pd.read_csv("data/redfin_hollywood_hills.csv")
-
-  # Display basic info about the dataset
-  def inspect_data(df):
-      print("\nData Overview:")
-      print(df.info())
-      print("\nFirst Few Rows:")
-      print(df.head())
-
-  # Handle missing data
+  import logging
+  from datetime import datetime
+  
+  # Setup logging
+  logging.basicConfig(
+      filename="logs/analyze.log",
+      level=logging.INFO,
+      format="%(asctime)s - %(levelname)s - %(message)s"
+  )
+  
+  # Load dataset (specific date or full historical dataset)
+  def load_data(date=None):
+      if date:
+          file_path = f"data/redfin_hollywood_hills_{date}.csv"
+      else:
+          file_path = "data/redfin_hollywood_hills_master.csv"
+  
+      if os.path.exists(file_path):
+          df = pd.read_csv(file_path)
+          df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+          logging.info(f"📊 Loaded data from {file_path}")
+          return df
+      else:
+          logging.warning(f"⚠️ No data found for {date or 'historical records'}!")
+          return pd.DataFrame()
+  
+  # Handle missing values & clean data
   def clean_data(df):
-      print("\nHandling Missing Data...")
-      
+      logging.info("🛠 Cleaning Data...")
+  
       # Replace invalid values
-      df.replace({'—': np.nan, 'N/A': np.nan, '': np.nan}, inplace=True)
-
-      # Drop rows with missing essential values (Price, Beds, Baths, SqFt)
-      df.dropna(subset=["Price", "Beds", "Baths", "SqFt"], inplace=True)
-      
-      # Reset index
-      df.reset_index(drop=True, inplace=True)
-      
-      print(f"Cleaned Data: {len(df)} rows remaining.")
-      return df
-
-  def extract_numeric(value):
-      """Extracts numeric values from a string. Handles cases like '1 bed', '2 baths', 'Studio'"""
-      if isinstance(value, str):
-          match = re.search(r'\d+', value)  # Find first numeric value
-          return float(match.group()) if match else np.nan  # Convert to float, otherwise NaN
-      return np.nan  # Return NaN for non-string values
-
-  def convert_columns(df):
-      print("Converting Columns...")
-      
-      # Strip whitespace from all columns
-      df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-      
-      # Convert Price column: Remove "$" and "," then convert to float
-      df['Price'] = df['Price'].str.replace('[$,]', '', regex=True).replace('', np.nan).astype(float)
-      
-      # Convert SqFt column: Replace non-numeric characters, handle empty values
-      df['SqFt'] = df['SqFt'].replace(['—', '', 'N/A'], np.nan)
-      df['SqFt'] = df['SqFt'].str.replace(',', '', regex=True)
-      df['SqFt'] = pd.to_numeric(df['SqFt'], errors='coerce')
-      
-      # Convert Beds & Baths
-      df['Beds'] = df['Beds'].apply(extract_numeric)
-      df['Baths'] = df['Baths'].apply(extract_numeric)
-
+      df.replace({"—": np.nan, "N/A": np.nan, "": np.nan}, inplace=True)
+  
+      # Convert numeric columns
+      df["Price"] = df["Price"].str.replace("[$,]", "", regex=True).astype(float)
+      df["SqFt"] = df["SqFt"].str.replace(",", "", regex=True).astype(float)
+      df["Beds"] = df["Beds"].str.extract("(\d+)").astype(float)
+      df["Baths"] = df["Baths"].str.extract("(\d+)").astype(float)
+  
       # Convert Latitude & Longitude to float
-      df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
-      df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
-
-      print("Data Cleaning Complete!")
+      df["Latitude"] = pd.to_numeric(df["Latitude"], errors="coerce")
+      df["Longitude"] = pd.to_numeric(df["Longitude"], errors="coerce")
+  
+      # Drop rows missing essential values
+      df.dropna(subset=["Price", "Beds", "Baths", "SqFt", "Latitude", "Longitude"], inplace=True)
+  
+      logging.info(f"✅ Cleaned data: {len(df)} valid listings remaining.")
       return df
-
+  
   # Generate summary statistics
   def summarize_data(df):
-      print("\nSummary Statistics:")
-      print(df.describe())
-
-  # Plot price distribution
-  def plot_price_distribution(df):
-      plt.figure(figsize=(10,5))
-      sns.histplot(df['Price'], bins=30, kde=True)
-      plt.xlabel("Price (in millions)")
-      plt.ylabel("Count")
-      plt.title("Price Distribution of Listings")
-      plt.show()
-
-  # Analyze Beds/Baths
-  def analyze_beds_baths(df):
-      plt.figure(figsize=(10,5))
-      sns.countplot(x='Beds', data=df, order=sorted(df['Beds'].dropna().unique()))
-      plt.xlabel("Number of Bedrooms")
-      plt.ylabel("Count")
-      plt.title("Distribution of Bedrooms in Listings")
-      plt.show()
-      
-      plt.figure(figsize=(10,5))
-      sns.countplot(x='Baths', data=df, order=sorted(df['Baths'].dropna().unique()))
-      plt.xlabel("Number of Bathrooms")
-      plt.ylabel("Count")
-      plt.title("Distribution of Bathrooms in Listings")
-      plt.show()
-
-  # Handle missing geo-coordinates
-  def handle_missing_geo(df):
-      missing_geo = df[df['Latitude'].isna() | df['Longitude'].isna()]
-      if not missing_geo.empty:
-          print(f"\nWarning: {len(missing_geo)} listings are missing geo-coordinates.")
-          df = df.dropna(subset=['Latitude', 'Longitude'])
-          print(f"{len(df)} listings retained after removing missing geo-coordinates.")
-      return df
-
-  # Top & Bottom Listings
+      summary = df.describe()
+      logging.info(f"\n📊 Summary Statistics:\n{summary}")
+  
+  # Plot price trends over time
+  def plot_price_trend(df):
+      plt.figure(figsize=(12, 6))
+      sns.lineplot(x="Date", y="Price", data=df, estimator="mean", ci=None)
+      plt.title("📈 Average Listing Price Over Time")
+      plt.xlabel("Date")
+      plt.ylabel("Average Price ($)")
+      plt.xticks(rotation=45)
+      plt.grid()
+      plt.savefig("plots/price_trend.png")
+      logging.info("📊 Saved price trend plot.")
+  
+  # Show the number of listings over time
+  def plot_listings_trend(df):
+      plt.figure(figsize=(12, 6))
+      df.groupby("Date").size().plot(kind="line", marker="o")
+      plt.title("📉 Number of Listings Over Time")
+      plt.xlabel("Date")
+      plt.ylabel("Listings Count")
+      plt.xticks(rotation=45)
+      plt.grid()
+      plt.savefig("plots/listings_trend.png")
+      logging.info("📊 Saved listings trend plot.")
+  
+  # Show top & bottom listings
   def show_extreme_listings(df):
-      print("\nTop 5 Most Expensive Listings:")
-      print(df.nlargest(5, 'Price'))
-      print("\nTop 5 Cheapest Listings:")
-      print(df.nsmallest(5, 'Price'))
-
+      logging.info("\n💰 Top 5 Most Expensive Listings:")
+      logging.info(df.nlargest(5, "Price").to_string())
+  
+      logging.info("\n💸 Top 5 Cheapest Listings:")
+      logging.info(df.nsmallest(5, "Price").to_string())
+  
+  # Save cleaned data & append to master dataset
+  def save_cleaned_data(df, date):
+      cleaned_filename = f"data/redfin_hollywood_hills_cleaned_{date}.csv"
+      df.to_csv(cleaned_filename, index=False)
+      logging.info(f"✅ Saved cleaned daily data: {cleaned_filename}")
+  
+      # Append to master dataset
+      master_filename = "data/redfin_hollywood_hills_master_cleaned.csv"
+      if os.path.exists(master_filename):
+          master_df = pd.read_csv(master_filename)
+          df = pd.concat([master_df, df]).drop_duplicates(subset=["Address", "Date"])
+  
+      df.to_csv(master_filename, index=False)
+      logging.info(f"✅ Updated master dataset: {master_filename}")
+  
   # Run analysis
+  def run_analysis(date=None):
+      try:
+          logging.info(f"\n🚀 Running Analysis for {date or 'historical data'}...\n")
+          df = load_data(date)
+  
+          if df.empty:
+              logging.warning("⚠️ No data available to analyze.")
+              return False
+  
+          df = clean_data(df)
+          summarize_data(df)
+  
+          if date:
+              save_cleaned_data(df, date)
+  
+          if not date:
+              plot_price_trend(df)
+              plot_listings_trend(df)
+  
+          show_extreme_listings(df)
+          logging.info("✅ Analysis complete.\n")
+          return True
+  
+      except Exception as e:
+          logging.error(f"❌ Analysis failed: {e}")
+          return False
+  
+  # Run the script automatically
   if __name__ == "__main__":
-      inspect_data(df)
-      df = clean_data(df)
-      df = convert_columns(df)
-      df = handle_missing_geo(df)
-      summarize_data(df)
-      plot_price_distribution(df)
-      analyze_beds_baths(df)
-      show_extreme_listings(df)
-      
-      # Save the cleaned dataset
-      df.to_csv("data/redfin_hollywood_hills_cleaned.csv", index=False)
-      print("Cleaned data saved as 'redfin_hollywood_hills_cleaned.csv'.")
+      today = datetime.today().strftime("%Y-%m-%d")
+      run_analysis(today)  # Run for today’s data
+      run_analysis()       # Run historical analysis
   
