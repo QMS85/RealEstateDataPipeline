@@ -1,4 +1,4 @@
-# RealEstateDataPipeline
+# Real Estate Data Pipeline Using Python
 
 A Python-based data pipeline for scraping real estate listings and visualizing the results with a Streamlit web app.  
 This is a free course, available on hackr.io which includes a certificate of completion.  
