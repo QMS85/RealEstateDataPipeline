@@ -132,7 +132,5 @@ MIT License
 
 ---
 
-## Author
-
-Your Name  
+## Author   
 [Jonathan Peters](https://github.com/QMS85)
